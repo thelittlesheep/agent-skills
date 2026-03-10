@@ -1,0 +1,5 @@
+.DS_Store
+tools/*/social-reader
+tools/*/uiux-cli
+tools/*/review-cli
+tools/*/english-coach

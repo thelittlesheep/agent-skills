@@ -1,0 +1,6 @@
+{
+  "name": "agent-marketplace",
+  "version": "1.0.0",
+  "description": "Plugin marketplace — skills, CLI tools, code review, social reading, UI/UX design",
+  "contextFileName": "GEMINI.md"
+}

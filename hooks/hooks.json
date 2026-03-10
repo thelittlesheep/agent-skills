@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": "run_shell_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${extensionPath}/plugins/code-review-router/hooks/scripts/validate-review-cli.sh",
+            "name": "validate-review-cli",
+            "description": "Validates that gemini/opencode CLI is available before review routing"
+          }
+        ]
+      }
+    ]
+  }
+}
