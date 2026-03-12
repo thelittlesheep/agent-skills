@@ -40,6 +40,12 @@
       "description": "Structured .agent folder documentation methodology for project knowledge management",
       "source": "./plugins/agent-docs",
       "category": "productivity"
+    },
+    {
+      "name": "status-line",
+      "description": "Claude Code status line with model info, git branch, context usage, rate limits, and session tracking",
+      "source": "./plugins/status-line",
+      "category": "productivity"
     }
   ]
 }

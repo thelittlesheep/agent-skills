@@ -3,3 +3,6 @@ tools/*/social-reader
 tools/*/uiux-cli
 tools/*/review-cli
 tools/*/english-coach
+
+# Compiled binaries
+plugins/status-line/tools/status-line/status-line
