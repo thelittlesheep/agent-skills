@@ -24,8 +24,9 @@
 | **ui-ux-pro-max** | 本地 BM25 搜尋，查詢 UI/UX 設計知識庫 |
 | **english-coach** | 以 hook 形式在背景執行的英文文法檢查 |
 | **agent-docs** | `.agent/` 文件方法論，維護專案上下文 |
-| **status-line** | 終端機狀態列，顯示模型資訊、context 用量、rate limit、session 時間 |
+| **status-line** | 終端機狀態列，顯示模型資訊、context 用量、rate limit、session 時間、心情 |
 | **deep-research** | Source-first 研究流程，附 inline 引用與自我驗證 |
+| **maid-cafe** | 女僕咖啡廳 persona 系統 — 心情顯示、語音、/look 指令、時段問候 |
 
 ## 安裝
 
@@ -49,6 +50,14 @@ claude plugin install code-quality-suite  # 安裝個別 plugin
 - 安裝預設設定檔到 `~/.config/`
 - Symlink skills、commands、agents 和 plugin 到 `~/.config/opencode/`
 
+## 移除 (maid-cafe)
+
+```bash
+./uninstall-maid-cafe.sh          # Claude Code + OpenCode 全部移除
+./uninstall-maid-cafe.sh cc       # 只移除 Claude Code
+./uninstall-maid-cafe.sh opencode # 只移除 OpenCode
+```
+
 ## 前置需求
 
 - Go 1.24+
@@ -65,7 +74,8 @@ plugins/
 ├── english-coach/         # Go CLI + hook
 ├── agent-docs/            # skill + references
 ├── status-line/           # Go CLI + bash script
-└── deep-research/         # skill + references
+├── deep-research/         # skill + references
+└── maid-cafe/             # skill + personas + commands + hooks + voice assets
 ```
 
 每個 plugin 遵循相同結構：`.claude-plugin/` 下放 `plugin.json` manifest，搭配選用的 `skills/`、`agents/`、`tools/`、`commands/`、`hooks/` 目錄。
@@ -88,3 +98,7 @@ agent-marketplace/
 | `status-line` | 僅 Claude Code（依賴 status bar API） |
 | Agent model 選擇 | 各 runtime 自行管理；agent 用建議而非強制 |
 | `validate-review-cli` hook | 僅 Claude Code（OpenCode 無 hook 系統） |
+| `maid-cafe` 語音 hooks | 僅 macOS（依賴 `afplay`）；僅 Claude Code |
+| `maid-cafe` 心情顯示 | 需要 `status-line` plugin（讀取 `~/.claude/mood.txt`） |
+| `maid-cafe` spinnerVerbs | 首次 session 自動注入；需要 `jq` |
+| `maid-cafe` 語音素材 | 首次 session 自動從 plugin 內建 zip 解壓 |

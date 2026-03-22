@@ -22,8 +22,6 @@ const (
     ColorCyan   = "\033[38;2;118;170;185m"
     ColorPink   = "\033[38;2;255;182;193m"
     ColorGreen  = "\033[38;2;152;195;121m"
-    ColorSilver = "\033[38;2;192;192;192m"
-
     ColorCtxGreen  = "\033[38;2;108;167;108m"
     ColorCtxGold   = "\033[38;2;188;155;83m"
     ColorWhite     = "\033[38;2;220;220;220m"
@@ -95,7 +93,7 @@ type KeychainCredentials struct {
 // 結果通道資料
 type Result struct {
     Type string
-    Data interface{}
+    Data string
 }
 
 // 簡單快取
@@ -113,11 +111,11 @@ func main() {
     }
 
     // 建立結果通道
-    results := make(chan Result, 6)
+    results := make(chan Result, 7)
     var wg sync.WaitGroup
 
     // 並行獲取各種資訊
-    wg.Add(6)
+    wg.Add(7)
 
     go func() {
         defer wg.Done()
@@ -155,6 +153,12 @@ func main() {
         results <- Result{"usage", usageLines}
     }()
 
+    go func() {
+        defer wg.Done()
+        mood := readMood()
+        results <- Result{"mood", mood}
+    }()
+
     // 等待所有 goroutines 完成
     go func() {
         wg.Wait()
@@ -162,22 +166,24 @@ func main() {
     }()
 
     // 收集結果
-    var gitBranch, totalHours, contextUsage, userMessage, englishTip, usageLines string
+    var gitBranch, totalHours, contextUsage, userMessage, englishTip, usageLines, mood string
 
     for result := range results {
         switch result.Type {
         case "git":
-            gitBranch = result.Data.(string)
+            gitBranch = result.Data
         case "hours":
-            totalHours = result.Data.(string)
+            totalHours = result.Data
         case "context":
-            contextUsage = result.Data.(string)
+            contextUsage = result.Data
         case "message":
-            userMessage = result.Data.(string)
+            userMessage = result.Data
         case "tip":
-            englishTip = result.Data.(string)
+            englishTip = result.Data
         case "usage":
-            usageLines = result.Data.(string)
+            usageLines = result.Data
+        case "mood":
+            mood = result.Data
         }
     }
 
@@ -193,9 +199,17 @@ func main() {
         ColorReset, modelDisplay, projectName, gitBranch,
         contextUsage, totalHours, ColorReset)
 
-    // 輸出 rate limit 使用量
-    if usageLines != "" {
-        fmt.Print(usageLines)
+    // 輸出心情 + rate limit 使用量（合併為一行）
+    if mood != "" || usageLines != "" {
+        sep := fmt.Sprintf(" %s|%s ", ColorDim, ColorReset)
+        var parts []string
+        if mood != "" {
+            parts = append(parts, fmt.Sprintf("🎭 %s", mood))
+        }
+        if usageLines != "" {
+            parts = append(parts, usageLines)
+        }
+        fmt.Printf("\n%s%s\n", strings.Join(parts, sep), ColorReset)
     }
 
     // 輸出英文教練提示
@@ -284,8 +298,12 @@ func updateSession(sessionID string) {
 
     // 讀取現有 session
     if data, err := os.ReadFile(sessionFile); err == nil {
-        json.Unmarshal(data, &session)
-    } else {
+        if err := json.Unmarshal(data, &session); err != nil {
+            // 檔案損毀，重建 session
+            session = Session{}
+        }
+    }
+    if session.ID == "" {
         // 新 session
         session = Session{
             ID:            sessionID,
@@ -324,8 +342,12 @@ func updateSession(sessionID string) {
     session.TotalSeconds = total
 
     // 儲存
-    if data, err := json.Marshal(session); err == nil {
-        os.WriteFile(sessionFile, data, 0644)
+    data, err := json.Marshal(session)
+    if err != nil {
+        return
+    }
+    if err := os.WriteFile(sessionFile, data, 0644); err != nil {
+        fmt.Fprintf(os.Stderr, "Failed to save session: %v\n", err)
     }
 }
 
@@ -426,35 +448,37 @@ func analyzeContext(transcriptPath string, modelName string) string {
     return fmt.Sprintf(" | %s%d%% %s%s", color, percentage, formattedNum, ColorReset)
 }
 
-// 計算 Context 使用量
-func calculateContextUsage(transcriptPath string) int {
-    file, err := os.Open(transcriptPath)
+// 讀取檔案尾部 N 行
+func readTailLines(filePath string, n int) []string {
+    file, err := os.Open(filePath)
     if err != nil {
-        return 0
+        return nil
     }
     defer file.Close()
 
-    // 讀取最後100行
-    lines := make([]string, 0, 100)
     scanner := bufio.NewScanner(file)
-
-    // 設定更大的 buffer（1MB）以處理長 JSON 行
     const maxScanTokenSize = 1024 * 1024 // 1MB
     buf := make([]byte, 0, maxScanTokenSize)
     scanner.Buffer(buf, maxScanTokenSize)
 
-    // 先讀取所有行到切片
-    allLines := make([]string, 0)
+    var allLines []string
     for scanner.Scan() {
         allLines = append(allLines, scanner.Text())
     }
 
-    // 取最後100行
-    start := len(allLines) - 100
+    start := len(allLines) - n
     if start < 0 {
         start = 0
     }
-    lines = allLines[start:]
+    return allLines[start:]
+}
+
+// 計算 Context 使用量
+func calculateContextUsage(transcriptPath string) int {
+    lines := readTailLines(transcriptPath, 100)
+    if lines == nil {
+        return 0
+    }
 
     // 從後往前分析
     for i := len(lines) - 1; i >= 0; i-- {
@@ -506,7 +530,6 @@ func calculateContextUsage(transcriptPath string) int {
     return 0
 }
 
-
 // 格式化數字
 func formatNumber(num int) string {
     if num == 0 {
@@ -527,26 +550,10 @@ func extractUserMessage(transcriptPath, sessionID string) string {
         return ""
     }
 
-    file, err := os.Open(transcriptPath)
-    if err != nil {
+    lines := readTailLines(transcriptPath, 200)
+    if lines == nil {
         return ""
     }
-    defer file.Close()
-
-    // 讀取最後200行
-    lines := make([]string, 0, 200)
-    scanner := bufio.NewScanner(file)
-
-    allLines := make([]string, 0)
-    for scanner.Scan() {
-        allLines = append(allLines, scanner.Text())
-    }
-
-    start := len(allLines) - 200
-    if start < 0 {
-        start = 0
-    }
-    lines = allLines[start:]
 
     // 從後往前搜尋使用者訊息
     for i := len(lines) - 1; i >= 0; i-- {
@@ -645,6 +652,27 @@ func readEnglishTip(sessionID string) string {
     return tip
 }
 
+// 讀取心情
+func readMood() string {
+    homeDir, err := os.UserHomeDir()
+    if err != nil {
+        return ""
+    }
+
+    moodPath := filepath.Join(homeDir, ".claude", "mood.txt")
+    data, err := os.ReadFile(moodPath)
+    if err != nil {
+        return ""
+    }
+
+    mood := strings.TrimSpace(string(data))
+    if mood == "" {
+        return ""
+    }
+
+    return mood
+}
+
 // 取得 OAuth token
 func getOAuthToken() string {
     // 1. 環境變數
@@ -729,9 +757,10 @@ func fetchUsageData() *UsageResponse {
         return nil
     }
 
-    // 寫入快取
-    os.MkdirAll(cacheDir, 0755)
-    os.WriteFile(cacheFile, body, 0644)
+    // 寫入快取（權限限制為當前使用者）
+    if err := os.MkdirAll(cacheDir, 0700); err == nil {
+        _ = os.WriteFile(cacheFile, body, 0600)
+    }
 
     return &usage
 }
@@ -799,7 +828,7 @@ func fetchAndFormatUsage() string {
         weekly += fmt.Sprintf(" %s⟳%s %s%s%s", ColorDim, ColorReset, ColorWhite, sevenDayReset, ColorReset)
     }
 
-    return fmt.Sprintf("\n%s%s%s\n", current, sep, weekly)
+    return fmt.Sprintf("%s%s%s", current, sep, weekly)
 }
 
 // 格式化使用者訊息
